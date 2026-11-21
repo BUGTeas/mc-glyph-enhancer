@@ -15,9 +15,24 @@
 </head>
 <body>
 <style>
-	:root{tab-size:2;image-rendering:pixelated;}
-	#ta{width:100%;font-family:monospace;}
-	canvas{min-width:min(640px,100%);max-width:100%;background:#653f 0 0/12.5% url("data:image/svg+xml,%3Csvg viewBox='0 0 2 2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='0,0 1,0 1,2 2,2 2,1 0,1' fill='%23254f'/%3E%3C/svg%3E");}
+	#ta {
+		width: 100%;
+		tab-size: 2;
+		font-family: monospace;
+	}
+
+	canvas {
+		min-width: 16px;
+		max-width: 100%;
+		background: #653f 0 0/12.5% url("data:image/svg+xml,%3Csvg viewBox='0 0 2 2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolygon points='0,0 1,0 1,2 2,2 2,1 0,1' fill='%23254f'/%3E%3C/svg%3E");
+		transition: min-width .2s;
+	}
+	.preview-scaled {
+		min-width: 100%;
+		max-width: none;
+		image-rendering: pixelated;
+	}
+
 	.info {
 		margin: 16px 0;
 		display: block;
@@ -65,7 +80,7 @@
 	<button id="btn" class="button">Export</button>
 </div>
 <pre id="flog"></pre>
-<textarea id="ta" class="zab" spellcheck="false" style="box-sizing: border-box; transition: height; height: 185px;">// configs
+<textarea id="ta" class="zab" spellcheck="false">// configs
 {
 	name: 'font resource pack',
 	img: 64,
@@ -79,6 +94,7 @@
 }</textarea>
 <div id="elog"></div>
 <canvas></canvas>
+<div>(Click to zoom)</div>
 <div class="info info-highlight">
 	<p>About highlighted (auto resized) chars in the preview:</p>
 	<ul>
@@ -88,7 +104,7 @@
 	</ul>
 </div>
 <div class="info info-link">
-	<p><b>This is a modded version of McbeEringi's.</b><br><span style="font-size:85%">Original versions:</span></p>
+	<p><b>This is a modded version.</b><br><span style="font-size:85%">Original versions (MIT License) by McbeEringi:</span></p>
 	<ul>
 		<li><a class="button" href="https://mcbeeringi.github.io/apps/mc/glyph_v0.html">v0</a></li>
 		<li><a class="button" href="https://mcbeeringi.github.io/apps/mc/glyph_v1.html">v1</a></li>
@@ -255,6 +271,8 @@ ta.oninput=_=>(_=cfgget())&&(
 	ta.oninput()
 ))();
 btn.onclick=_=>main();
+
+document.querySelector('canvas').addEventListener("click", e => e.target.classList.toggle("preview-scaled"));
 </script>
 </body>
 <html>
