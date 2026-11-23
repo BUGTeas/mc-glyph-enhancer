@@ -86,7 +86,10 @@
 	img: 64,
 	buffer: 0,// 0: use img size; negative: disable smooth scaling
 	font: '$px _your_loaded_font_file_ttf, sans-serif',// '$' (the buffer size) can be replaced with others, make smaller when too many highlighted char
-	baseline: (char, img, textMetrics) => img/8,//(textMetrics.fontBoundingBoxDescent || 0),
+	adjust: (char, buffer, textMetrics) => ({
+		baseline: buffer / 8,// Font default: textMetrics.fontBoundingBoxDescent || 0,
+		spacing: buffer / -8// For monospace: textMetrics.width &gt; buffer / 2 ? 0 : buffer / -16
+	}),
 	list: [-1, ...Array(256).keys()].filter(i =&gt; (i &lt; 0xd8 || 0xf8 &lt; i)),// xx&lt;0 ? default8 : glyph_xx
 
 	threads: 4,// If less than or equal to 0, the main thread is used.(higher browser compatibility)
@@ -96,11 +99,13 @@
 <canvas></canvas>
 <div>(Click to zoom)</div>
 <div class="info info-highlight">
-	<p>About highlighted (auto resized) chars in the preview:</p>
+	<p>About highlights (invisible after export) in the preview:</p>
 	<ul>
-		<li><span style="color:#eb0">Gold</span>Overflow above the baseline</li>
-		<li><span style="color:#0eb">Cyan</span>Overflow below the baseline</li>
-		<li><span style="color:#f0f">Magenta</span>Both</li>
+		<li><span style="color:#eb0">Gold</span>Overflow above the baseline (auto resized)</li>
+		<li><span style="color:#0eb">Cyan</span>Overflow below the baseline (auto resized)</li>
+		<li><span style="color:#f0f">Magenta</span>&lt;&lt; Both above</li>
+		<li><span style="box-shadow: 0 -1px 0 #0ff;">Top horizontal line</span>Width overflow (auto resized)</li>
+		<li><span style="box-shadow: -1px 0 0 #0ff, 1px 0 0 #0ff">&nbsp;Vertical lines&nbsp;</span>Margin visible</li>
 	</ul>
 </div>
 <div class="info info-link">
@@ -116,77 +121,96 @@
 <script type="module">
 import TA from './ta/ta.mjs';
 import {zip,dl} from './petit/zip.mjs';
-let getBaseline;
+let getAdjust;
 const
 d8=`ÀÁÂÈÊËÍÓÔÕÚßãõğİıŒœŞşŴŵžȇ§©      !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_\`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αβΓπΣσμτΦΘΩδ∞∅∈∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ `,
 ctx=document.querySelector('canvas').getContext('2d'),
 bufferCtx=new OffscreenCanvas(1,1).getContext('2d'),
 cfgget=_=>{try{return Function(`return(${ta.value});`)()}catch(e){console.warn(e)}},
-cfgset=(ctx,bufferCtx,cfg)=>(
+cfgset=(ctx,bufferCtx,cfg,dbg)=>(
 	ctx.canvas.width = ctx.canvas.height = cfg.img * 16,
 	ctx.imageSmoothingEnabled = ctx.mozImageSmoothingEnabled = ctx.webkitImageSmoothingEnabled = ctx.msImageSmoothingEnabled = cfg.buffer >= 0,
+	ctx.fillStyle = dbg ? '#0ff' : '#ffffff01',
 	bufferCtx.canvas.width = bufferCtx.canvas.height = cfg.buffer == 0 ? cfg.img : Math.abs(cfg.buffer),
 	bufferCtx.fillStyle = '#fff',
 	bufferCtx.font = cfg.font.startsWith('$') ? bufferCtx.canvas.width + cfg.font.substring(1) : cfg.font
 ),
 draw=(ctx,bufferCtx,p,dbg)=>(
 	ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height),
-	[...Array(256)].forEach((a = bufferCtx.canvas.width, i,s,m,h,w,b, img = ctx.canvas.width/16, baseline) => (
+	[...Array(256)].forEach((
+		bufW = bufferCtx.canvas.width,
+		i,s,m, w,h, spacing, baseline, left, top,
+		imgW = ctx.canvas.width / 16
+	) => (
 		bufferCtx.setTransform(1,0,0,1,0,0),
-		bufferCtx.clearRect(0,0,a,a),
+		bufferCtx.clearRect(0, 0, bufW, bufW),
 		s = p<0 ? d8[i] : String.fromCodePoint(p<<8|i),
 		m = bufferCtx.measureText(s),
-		baseline = getBaseline(s,a,m),
-		// 宽度
+		{ spacing, baseline } = getAdjust(s, bufW, m),
+		// Content Width
 		w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight,
-		// 超宽则改变比例
-		a<w && bufferCtx.scale(a/(w+1), 1),
-		// 高度
+		// Change scale if width overflows
+		bufW < w && (
+			bufferCtx.scale(bufW / (w+1), 1),
+			dbg && ctx.fillRect(i%16 * imgW, (i/16|0) * imgW, imgW, 1)
+		),
+		// Left margin
+		left = Math.max(m.actualBoundingBoxLeft, Math.min(
+				(bufW < (m.width + spacing) ? bufW - m.width : spacing) / 2,
+				spacing + (m.width - m.actualBoundingBoxRight),
+				bufW - m.actualBoundingBoxRight)),
+		// Margin holders
+		(left > m.actualBoundingBoxLeft || w == 0 && (m.width + spacing) > 1) && ctx.fillRect(
+			i%16 * imgW, (i/16|0) * imgW, 1, dbg ? imgW / 2 : 1),
+		bufW > (left + m.actualBoundingBoxRight) && (m.width + spacing) > (left + m.actualBoundingBoxRight) && ctx.fillRect(
+			i%16 * imgW + Math.min((m.width + spacing) * (imgW / bufW) | 0, imgW),
+			(i/16|0) * imgW, -1, dbg ? imgW : 1),
+		// Content height
 		h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent,
-		// 基线上方超高
-		(a - baseline < m.actualBoundingBoxAscent) ? (
-			// 缩放比例
-			b = (a - baseline) / m.actualBoundingBoxAscent,
-			// 同时基线下方超高
-			((baseline / b) < m.actualBoundingBoxDescent) ? (
-				// 缩放比例
-				b = a/(h+1),
-				// 预览强调色
+		// Overflow above the baseline
+		(bufW - baseline < m.actualBoundingBoxAscent) ? (
+			// Scale
+			top = (bufW - baseline) / m.actualBoundingBoxAscent,
+			// Overflow below the baseline at the same time
+			((baseline / top) < m.actualBoundingBoxDescent) ? (
+				// Scale
+				top = bufW / (h+1),
+				// Highlight in preview
 				dbg && (
 					dbg = bufferCtx.fillStyle,
 					bufferCtx.fillStyle = '#f0f'
 				)
 			) :
-			// 预览强调色
+			// Highlight in preview
 			dbg && (
 				dbg = bufferCtx.fillStyle,
 				bufferCtx.fillStyle = '#eb0'
 			),
-			bufferCtx.scale(1, b),
-			b = m.actualBoundingBoxAscent
+			bufferCtx.scale(1, top),
+			top = m.actualBoundingBoxAscent
 		) : (
-			b = (baseline < m.actualBoundingBoxDescent ? (
-				// 基线下方超高
-				// 缩放锚点，基线上方内容占多则为内容顶部，基线下方内容占多则为框体顶部
-				b = (m.actualBoundingBoxAscent > m.actualBoundingBoxDescent) ? m.actualBoundingBoxAscent : a - baseline,
-				// 缩放
-				bufferCtx.scale(
-					1,
-					b = (b + baseline) / (b + m.actualBoundingBoxDescent)
-				),
-				// 预览强调色
+			top = (baseline < m.actualBoundingBoxDescent ? (
+				// Overflow below the baseline
+				// Anchor point of scaling
+				// corresponds to the top of content if the content above the baseline is larger
+				// otherwise, it corresponds to the top of frame
+				top = (m.actualBoundingBoxAscent > m.actualBoundingBoxDescent) ? m.actualBoundingBoxAscent : bufW - baseline,
+				// Scalling
+				top = (top + baseline) / (top + m.actualBoundingBoxDescent),
+				bufferCtx.scale(1, top),
+				// Highlight in preview
 				dbg && (
 					dbg = bufferCtx.fillStyle,
 					bufferCtx.fillStyle = '#0eb'
 				),
-				// 返回渲染Y坐标
-				a / b - m.actualBoundingBoxDescent
-			) : a - baseline) /*取整*/|0
+				// Return Y coordinate for rendering
+				bufW / top - m.actualBoundingBoxDescent
+			) : bufW - baseline) | 0
 		),
-		// 渲染文字
-		bufferCtx.fillText(s, m.actualBoundingBoxLeft, b),
-		ctx.drawImage(bufferCtx.canvas, i%16*img, (i/16|0)*img, img, img),
-		// 恢复预览颜色
+		// Render text
+		bufferCtx.fillText(s, left, top),
+		ctx.drawImage(bufferCtx.canvas, i%16 * imgW, (i/16|0) * imgW, imgW, imgW),
+		// Restore preview color
 		dbg && (
 			bufferCtx.fillStyle = dbg
 		)
@@ -206,10 +230,10 @@ main=async w=>(w=cfgget())&&(
 		w.files=(await Promise.all([...Array(w.cfg.threads)].map(async(x,i,a)=>(
 			x=new Worker(w.wurl),
 			await new Promise(f=>(
-				w.cfg.baseline = null,
+				w.cfg.adjust = null,
 				x.onmessage=f,
 				x.postMessage({flist,cfg:w.cfg,main:`
-					self.getBaseline=${getBaseline};
+					self.getAdjust=${getAdjust};
 					self.d8=${JSON.stringify(d8)};self.draw=${draw};self.i2p=${i2p};self.fload=${fload};await Promise.all(w.flist.map(x=>fload(x,self)));
 					(${cfgset})(
 						self.ctx=new OffscreenCanvas(1,1).getContext('2d'),
@@ -268,8 +292,8 @@ main=async w=>(w=cfgget())&&(
 
 TA.editor(ta);
 ta.oninput=_=>(_=cfgget())&&(
-	getBaseline = _.baseline,
-	cfgset(ctx,bufferCtx,_),
+	getAdjust = _.adjust,
+	cfgset(ctx,bufferCtx,_,true),
 	draw(ctx,bufferCtx,_.preview,1)
 );
 (file.onchange=async _=>(
