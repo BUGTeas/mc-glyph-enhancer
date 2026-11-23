@@ -84,8 +84,8 @@
 {
 	name: 'font resource pack',
 	img: 64,
-	buffer: 0,// If less than or equal to 0, the img size will be used.
-	font: '64px _your_loaded_font_file_ttf, sans-serif',// make smaller when too many highlighted char
+	buffer: 0,// 0: use img size; negative: disable smooth scaling
+	font: '$px _your_loaded_font_file_ttf, sans-serif',// '$' (the buffer size) can be replaced with others, make smaller when too many highlighted char
 	baseline: (char, img, textMetrics) => img/8,//(textMetrics.fontBoundingBoxDescent || 0),
 	list: [-1, ...Array(256).keys()].filter(i =&gt; (i &lt; 0xd8 || 0xf8 &lt; i)),// xx&lt;0 ? default8 : glyph_xx
 
@@ -121,13 +121,13 @@ const
 d8=`ÀÁÂÈÊËÍÓÔÕÚßãõğİıŒœŞşŴŵžȇ§©      !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_\`abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αβΓπΣσμτΦΘΩδ∞∅∈∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ `,
 ctx=document.querySelector('canvas').getContext('2d'),
 bufferCtx=new OffscreenCanvas(1,1).getContext('2d'),
-cfgget=_=>{try{return Function(`return(${ta.value});`)()}catch(e){}},
+cfgget=_=>{try{return Function(`return(${ta.value});`)()}catch(e){console.warn(e)}},
 cfgset=(ctx,bufferCtx,cfg)=>(
 	ctx.canvas.width = ctx.canvas.height = cfg.img * 16,
-	ctx.imageSmoothingEnabled = ctx.mozImageSmoothingEnabled = ctx.webkitImageSmoothingEnabled = ctx.msImageSmoothingEnabled = false,
-	bufferCtx.canvas.width = bufferCtx.canvas.height = cfg.buffer > 0 ? cfg.buffer : cfg.img,
+	ctx.imageSmoothingEnabled = ctx.mozImageSmoothingEnabled = ctx.webkitImageSmoothingEnabled = ctx.msImageSmoothingEnabled = cfg.buffer >= 0,
+	bufferCtx.canvas.width = bufferCtx.canvas.height = cfg.buffer == 0 ? cfg.img : Math.abs(cfg.buffer),
 	bufferCtx.fillStyle = '#fff',
-	bufferCtx.font = cfg.font
+	bufferCtx.font = cfg.font.startsWith('$') ? bufferCtx.canvas.width + cfg.font.substring(1) : cfg.font
 ),
 draw=(ctx,bufferCtx,p,dbg)=>(
 	ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height),
@@ -235,9 +235,14 @@ main=async w=>(w=cfgget())&&(
 	),
 	w.prg.removeAttribute('value'),w.log.textContent='please wait...',
 	w.files.push(
-		{name:'manifest.json',buffer:new Blob([mcmf({n:w.cfg.name,d:w.cfg.font})])},
+		{name:'manifest.json',buffer:new Blob([mcmf({
+			n: w.cfg.name,
+			d: w.cfg.buffer == 0 && w.cfg.font.startsWith('$px') ?
+				(w.cfg.img + w.cfg.font.substring(1)) :
+				(w.cfg.img + ">" + w.cfg.buffer + ">" + w.cfg.font)
+		})])},
 		{name:'pack_icon.png',buffer:await new Promise((f,r,x,bx)=>(
-			w.cfg.buffer > 0 || (
+			w.cfg.buffer == 0 && (
 				w.cfg.buffer = w.cfg.img
 			),
 			cfgset(
@@ -246,11 +251,12 @@ main=async w=>(w=cfgget())&&(
 				{
 					...w.cfg,
 					img: w.cfg.img / 8,
-					buffer: w.cfg.buffer * 2
+					buffer: w.cfg.buffer * 2,
+					font: w.cfg.font.startsWith('$') ? Math.abs(w.cfg.buffer) + w.cfg.font.substring(1) : w.cfg.font
 				}),
 			bx.textBaseline = 'middle',
 			bx.textAlign = 'center',
-			bx.fillText('Aa', w.cfg.buffer, w.cfg.buffer),
+			bx.fillText('Aa', Math.abs(w.cfg.buffer), Math.abs(w.cfg.buffer)),
 			x.drawImage(bx.canvas, 0, 0, w.cfg.img * 2, w.cfg.img * 2),
 			x.canvas.toBlob(f)
 		))}
